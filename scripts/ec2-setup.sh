@@ -15,7 +15,16 @@ git lfs install
 
 echo ""
 echo "[2/5] Installing piper-train from source ..."
-pip3 install --upgrade pip
+
+# piper_train requires pytorch-lightning~=1.7.0 which has invalid metadata
+# that newer pip rejects. Pin pip to a compatible version first.
+pip3 install "pip<24.1"
+
+# Install PyTorch with CUDA support (latest stable with cu118)
+pip3 install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# Pin numpy<2 and torchmetrics<0.12 for compatibility with piper-train
+pip3 install "numpy<2" "torchmetrics<0.12"
 
 # piper_train is not a standalone pip package -- must install from source
 PIPER_SRC_DIR="${EC2_WORK_DIR}/piper"
@@ -23,7 +32,31 @@ if [ ! -d "${PIPER_SRC_DIR}" ]; then
     git clone https://github.com/rhasspy/piper.git "${PIPER_SRC_DIR}"
 fi
 cd "${PIPER_SRC_DIR}/src/python"
-pip3 install -e .
+pip3 install --no-deps -e .
+
+# Build the monotonic_align C extension
+cd "${PIPER_SRC_DIR}/src/python/piper_train/vits/monotonic_align"
+python3 setup.py build_ext --inplace
+# Fix the output path (build puts .so in wrong directory)
+mkdir -p monotonic_align
+cp piper_train/vits/monotonic_align/core*.so monotonic_align/ 2>/dev/null || true
+
+# Patch piper-train for PyTorch 2.x LR scheduler compatibility
+LIGHTNING_FILE="${PIPER_SRC_DIR}/src/python/piper_train/vits/lightning.py"
+if ! grep -q "lr_scheduler_step" "${LIGHTNING_FILE}"; then
+    sed -i 's/    @staticmethod\n    def add_model_specific_args/    def lr_scheduler_step(self, scheduler, metric):\n        scheduler.step()\n\n    @staticmethod\n    def add_model_specific_args/' "${LIGHTNING_FILE}" 2>/dev/null || \
+    python3 -c "
+f = '${LIGHTNING_FILE}'
+c = open(f).read()
+c = c.replace(
+    '    @staticmethod\n    def add_model_specific_args',
+    '    def lr_scheduler_step(self, scheduler, metric):\n        scheduler.step()\n\n    @staticmethod\n    def add_model_specific_args'
+)
+open(f,'w').write(c)
+print('Patched lightning.py for PyTorch 2.x')
+"
+fi
+
 cd ~
 
 # Additional dependencies

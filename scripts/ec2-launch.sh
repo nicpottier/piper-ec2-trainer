@@ -14,7 +14,7 @@ AMI_ID=$(aws ec2 describe-images \
     --region "${EC2_REGION}" \
     --owners amazon \
     --filters \
-        "Name=name,Values=Deep Learning AMI GPU PyTorch *Ubuntu 20.04*" \
+        "Name=name,Values=Deep Learning OSS Nvidia Driver AMI GPU PyTorch*Ubuntu*" \
         "Name=state,Values=available" \
         "Name=architecture,Values=x86_64" \
     --query 'sort_by(Images, &CreationDate)[-1].ImageId' \
@@ -27,7 +27,7 @@ if [ -z "$AMI_ID" ] || [ "$AMI_ID" = "None" ]; then
         --region "${EC2_REGION}" \
         --owners amazon \
         --filters \
-            "Name=name,Values=Deep Learning AMI (Ubuntu)*" \
+            "Name=name,Values=Deep Learning*GPU*Ubuntu*" \
             "Name=state,Values=available" \
             "Name=architecture,Values=x86_64" \
         --query 'sort_by(Images, &CreationDate)[-1].ImageId' \
@@ -85,34 +85,65 @@ echo "NOTE: Ensure the instance has an IAM role with S3 access."
 echo "  You can attach a role with AmazonS3FullAccess policy."
 echo ""
 
-# Launch spot instance
-echo "Launching ${EC2_INSTANCE_TYPE} spot instance (max price: \$${EC2_SPOT_MAX_PRICE}/hr) ..."
+# Launch instance (on-demand or spot based on EC2_USE_SPOT)
+EC2_USE_SPOT="${EC2_USE_SPOT:-false}"
 
-INSTANCE_ID=$(aws ec2 run-instances \
-    --region "${EC2_REGION}" \
-    --image-id "${AMI_ID}" \
-    --instance-type "${EC2_INSTANCE_TYPE}" \
-    --key-name "${EC2_KEY_NAME}" \
-    --security-group-ids "${SG_ID}" \
-    --instance-market-options '{
+SPOT_OPTS=()
+if [ "${EC2_USE_SPOT}" = "true" ]; then
+    echo "Launching ${EC2_INSTANCE_TYPE} spot instance (max price: \$${EC2_SPOT_MAX_PRICE}/hr) ..."
+    SPOT_OPTS=(--instance-market-options '{
         "MarketType": "spot",
         "SpotOptions": {
             "MaxPrice": "'"${EC2_SPOT_MAX_PRICE}"'",
             "SpotInstanceType": "persistent",
             "InstanceInterruptionBehavior": "stop"
         }
-    }' \
-    --block-device-mappings '[{
-        "DeviceName": "/dev/sda1",
-        "Ebs": {
-            "VolumeSize": 200,
-            "VolumeType": "gp3",
-            "DeleteOnTermination": true
-        }
-    }]' \
-    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=sinhala-tts-training}]' \
-    --query 'Instances[0].InstanceId' \
+    }')
+else
+    echo "Launching ${EC2_INSTANCE_TYPE} on-demand instance ..."
+fi
+
+# Try multiple AZs if capacity is unavailable
+SUBNETS=$(aws ec2 describe-subnets \
+    --region "${EC2_REGION}" \
+    --filters "Name=default-for-az,Values=true" \
+    --query 'Subnets[*].SubnetId' \
     --output text)
+
+INSTANCE_ID=""
+for SUBNET in ${SUBNETS}; do
+    AZ=$(aws ec2 describe-subnets --subnet-ids "${SUBNET}" --region "${EC2_REGION}" \
+        --query 'Subnets[0].AvailabilityZone' --output text)
+    echo "  Trying ${AZ} (subnet ${SUBNET}) ..."
+
+    INSTANCE_ID=$(aws ec2 run-instances \
+        --region "${EC2_REGION}" \
+        --image-id "${AMI_ID}" \
+        --instance-type "${EC2_INSTANCE_TYPE}" \
+        --key-name "${EC2_KEY_NAME}" \
+        --security-group-ids "${SG_ID}" \
+        --subnet-id "${SUBNET}" \
+        --associate-public-ip-address \
+        ${SPOT_OPTS[@]+"${SPOT_OPTS[@]}"} \
+        --block-device-mappings '[{
+            "DeviceName": "/dev/sda1",
+            "Ebs": {
+                "VolumeSize": 200,
+                "VolumeType": "gp3",
+                "DeleteOnTermination": true
+            }
+        }]' \
+        --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=sinhala-tts-training}]' \
+        --query 'Instances[0].InstanceId' \
+        --output text 2>/dev/null) && break || INSTANCE_ID=""
+
+    echo "    No capacity in ${AZ}, trying next..."
+done
+
+if [ -z "${INSTANCE_ID}" ]; then
+    echo "ERROR: Could not launch instance in any availability zone."
+    exit 1
+fi
 
 echo "  Instance ID: ${INSTANCE_ID}"
 echo "${INSTANCE_ID}" > "$PROJECT_DIR/.instance_id"

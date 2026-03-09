@@ -95,15 +95,15 @@ TRAIN_CMD=(
     --devices 1
     --batch-size "${PIPER_BATCH_SIZE}"
     --validation-split 0.05
-    --max-epochs "${PIPER_MAX_EPOCHS}"
+    --max_epochs "${PIPER_MAX_EPOCHS}"
     --precision "${PIPER_PRECISION}"
     --quality "${PIPER_QUALITY}"
     --checkpoint-epochs "${PIPER_CHECKPOINT_EPOCHS}"
 )
 
-# Add fine-tuning checkpoint if available
+# Add fine-tuning checkpoint (single-speaker uses resume_from_checkpoint)
 if [ -n "${BASE_CKPT_FILE}" ]; then
-    TRAIN_CMD+=(--resume-from-single-speaker-checkpoint "${BASE_CKPT_FILE}")
+    TRAIN_CMD+=(--resume_from_checkpoint "${BASE_CKPT_FILE}")
 fi
 
 # If resuming, find latest local checkpoint
