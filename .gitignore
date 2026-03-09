@@ -1,0 +1,8 @@
+SinhalaTTSData
+prepared_data/
+*.ckpt
+*.onnx
+.instance_id
+__pycache__/
+*.pyc
+.env.local
