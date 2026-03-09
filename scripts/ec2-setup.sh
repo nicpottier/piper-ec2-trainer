@@ -44,13 +44,13 @@ cp piper_train/vits/monotonic_align/core*.so monotonic_align/ 2>/dev/null || tru
 # Patch piper-train for PyTorch 2.x LR scheduler compatibility
 LIGHTNING_FILE="${PIPER_SRC_DIR}/src/python/piper_train/vits/lightning.py"
 if ! grep -q "lr_scheduler_step" "${LIGHTNING_FILE}"; then
-    sed -i 's/    @staticmethod\n    def add_model_specific_args/    def lr_scheduler_step(self, scheduler, metric):\n        scheduler.step()\n\n    @staticmethod\n    def add_model_specific_args/' "${LIGHTNING_FILE}" 2>/dev/null || \
+    sed -i 's/    @staticmethod\n    def add_model_specific_args/    def lr_scheduler_step(self, scheduler, *args, **kwargs):\n        scheduler.step()\n\n    @staticmethod\n    def add_model_specific_args/' "${LIGHTNING_FILE}" 2>/dev/null || \
     python3 -c "
 f = '${LIGHTNING_FILE}'
 c = open(f).read()
 c = c.replace(
     '    @staticmethod\n    def add_model_specific_args',
-    '    def lr_scheduler_step(self, scheduler, metric):\n        scheduler.step()\n\n    @staticmethod\n    def add_model_specific_args'
+    '    def lr_scheduler_step(self, scheduler, *args, **kwargs):\n        scheduler.step()\n\n    @staticmethod\n    def add_model_specific_args'
 )
 open(f,'w').write(c)
 print('Patched lightning.py for PyTorch 2.x')
