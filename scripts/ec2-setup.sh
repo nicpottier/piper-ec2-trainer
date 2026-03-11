@@ -8,13 +8,13 @@ echo "=== Setting Up EC2 Training Environment ==="
 echo ""
 
 # Install system dependencies
-echo "[1/5] Installing system dependencies ..."
+echo "[1/6] Installing system dependencies ..."
 sudo apt-get update -qq
 sudo apt-get install -y -qq python3-pip sox libsox-fmt-all git-lfs
 git lfs install
 
 echo ""
-echo "[2/5] Installing piper-train from source ..."
+echo "[2/6] Installing piper-train from source ..."
 
 # piper_train requires pytorch-lightning~=1.7.0 which has invalid metadata
 # that newer pip rejects. Pin pip to a compatible version first.
@@ -26,6 +26,9 @@ pip3 install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 # Pin numpy<2 and torchmetrics<0.12 for compatibility with piper-train
 pip3 install "numpy<2" "torchmetrics<0.12"
 
+# Cython is needed to build the monotonic_align C extension
+pip3 install cython
+
 # piper_train is not a standalone pip package -- must install from source
 PIPER_SRC_DIR="${EC2_WORK_DIR}/piper"
 if [ ! -d "${PIPER_SRC_DIR}" ]; then
@@ -33,6 +36,9 @@ if [ ! -d "${PIPER_SRC_DIR}" ]; then
 fi
 cd "${PIPER_SRC_DIR}/src/python"
 pip3 install --no-deps -e .
+
+# Install piper-train runtime dependencies (not pulled in by --no-deps)
+pip3 install librosa piper-phonemize onnxruntime openpyxl
 
 # Build the monotonic_align C extension
 cd "${PIPER_SRC_DIR}/src/python/piper_train/vits/monotonic_align"
@@ -57,20 +63,26 @@ print('Patched lightning.py for PyTorch 2.x')
 "
 fi
 
+# Patch pytorch-lightning for PyTorch 2.6+ (weights_only=True default)
+PL_CLOUD_IO=$(python3 -c "import pytorch_lightning; import os; print(os.path.join(os.path.dirname(pytorch_lightning.__file__), 'utilities', 'cloud_io.py'))" 2>/dev/null || echo "")
+if [ -n "${PL_CLOUD_IO}" ] && [ -f "${PL_CLOUD_IO}" ]; then
+    if ! grep -q "weights_only" "${PL_CLOUD_IO}"; then
+        sed -i 's/return torch.load(f, map_location=map_location)/return torch.load(f, map_location=map_location, weights_only=False)/' "${PL_CLOUD_IO}"
+        echo "Patched pytorch-lightning for PyTorch 2.6+ torch.load"
+    fi
+fi
+
 cd ~
 
-# Additional dependencies
-pip3 install openpyxl
-
 echo ""
-echo "[3/5] Creating working directories ..."
+echo "[3/6] Creating working directories ..."
 mkdir -p "${EC2_WORK_DIR}"
 mkdir -p "${EC2_DATA_DIR}"
 mkdir -p "${EC2_OUTPUT_DIR}"
 mkdir -p "${EC2_CHECKPOINT_DIR}"
 
 echo ""
-echo "[4/5] Downloading training data from S3 ..."
+echo "[4/6] Downloading training data from S3 ..."
 aws s3 sync "s3://${S3_BUCKET}/${S3_DATA_PREFIX}/" "${EC2_DATA_DIR}/" --region "${S3_REGION}"
 
 WAV_COUNT=$(find "${EC2_DATA_DIR}/wav" -name "*.wav" 2>/dev/null | wc -l)
@@ -84,7 +96,7 @@ else
 fi
 
 echo ""
-echo "[5/5] Downloading Hindi base checkpoint from HuggingFace ..."
+echo "[5/6] Downloading Hindi base checkpoint from HuggingFace ..."
 CKPT_DOWNLOAD_DIR="${EC2_CHECKPOINT_DIR}/hindi-base"
 mkdir -p "${CKPT_DOWNLOAD_DIR}"
 
@@ -124,5 +136,8 @@ echo "  Work dir:        ${EC2_WORK_DIR}"
 echo "  Training data:   ${EC2_DATA_DIR} (${WAV_COUNT} wav files)"
 echo "  Output dir:      ${EC2_OUTPUT_DIR}"
 echo "  Hindi checkpoint: ${CKPT_DOWNLOAD_DIR}"
+echo ""
+echo "[6/6] Installing boot-time auto-resume service ..."
+"${SCRIPT_DIR}/ec2-install-autoresume.sh"
 echo ""
 echo "Next: run scripts/train.sh to start training"

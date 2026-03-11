@@ -125,7 +125,7 @@ ssh -i ~/.ssh/sinhala-tts-key.pem ubuntu@<PUBLIC_IP>
 ./scripts/ec2-setup.sh
 ```
 
-This installs dependencies, downloads training data from S3, and fetches the Hindi base checkpoint from HuggingFace (~845MB).
+This installs dependencies, downloads training data from S3, fetches the Hindi base checkpoint from HuggingFace (~845MB), and installs a `systemd` service that resumes training automatically after reboot or Spot recovery.
 
 ### 5. Start Training
 
@@ -157,6 +157,12 @@ tmux new -s training
 ./scripts/train.sh
 # Ctrl+B, D to detach
 # tmux attach -t training to reconnect
+```
+
+Auto-resume is also installed as a boot-time service:
+```bash
+sudo systemctl status sinhala-tts-resume.service
+sudo journalctl -u sinhala-tts-resume.service -f
 ```
 
 ### 7. Export Model
@@ -195,6 +201,8 @@ If the spot instance is interrupted or you want to continue training later:
 # 3. Resume training (skips preprocessing, loads latest checkpoint)
 ./scripts/train.sh --resume
 ```
+
+On instances configured with `scripts/ec2-setup.sh`, the boot-time service will also run `./scripts/train.sh --resume` automatically after the instance comes back.
 
 ## Cost Estimates
 
