@@ -9,10 +9,19 @@ if [ "${1:-}" = "--resume" ]; then
     RESUME=true
 fi
 
-echo "=== Sinhala TTS Training ==="
+LOCK_FILE="${EC2_WORK_DIR}/train.lock"
+mkdir -p "${EC2_WORK_DIR}"
+exec 9>"${LOCK_FILE}"
+if ! flock -n 9; then
+    echo "Another training process is already running (lock: ${LOCK_FILE})"
+    exit 1
+fi
+
+echo "=== ${LANG_NAME} TTS Training ==="
 echo ""
 
-CKPT_DOWNLOAD_DIR="${EC2_CHECKPOINT_DIR}/hindi-base"
+BASE_CKPT_SLUG=$(echo "${BASE_CHECKPOINT_NAME}" | tr '[:upper:]' '[:lower:]')
+CKPT_DOWNLOAD_DIR="${EC2_CHECKPOINT_DIR}/${BASE_CKPT_SLUG}-base"
 TRAINING_DIR="${EC2_OUTPUT_DIR}/training"
 
 # --- Step 1: Preprocess ---
@@ -95,26 +104,27 @@ TRAIN_CMD=(
     --devices 1
     --batch-size "${PIPER_BATCH_SIZE}"
     --validation-split 0.05
-    --max-epochs "${PIPER_MAX_EPOCHS}"
+    --max_epochs "${PIPER_MAX_EPOCHS}"
     --precision "${PIPER_PRECISION}"
     --quality "${PIPER_QUALITY}"
     --checkpoint-epochs "${PIPER_CHECKPOINT_EPOCHS}"
 )
 
-# Add fine-tuning checkpoint if available
-if [ -n "${BASE_CKPT_FILE}" ]; then
-    TRAIN_CMD+=(--resume-from-single-speaker-checkpoint "${BASE_CKPT_FILE}")
-fi
-
-# If resuming, find latest local checkpoint
 if [ "$RESUME" = true ]; then
-    LATEST_CKPT=$(find "${TRAINING_DIR}/lightning_logs" -name "*.ckpt" -type f 2>/dev/null | sort | tail -1)
+    LATEST_CKPT=$(
+        find "${TRAINING_DIR}/lightning_logs" -name "*.ckpt" -type f -printf '%T@ %p\n' 2>/dev/null \
+            | sort -n \
+            | tail -1 \
+            | cut -d' ' -f2-
+    )
     if [ -n "${LATEST_CKPT}" ]; then
         echo "  Resuming from: ${LATEST_CKPT}"
         TRAIN_CMD+=(--resume_from_checkpoint "${LATEST_CKPT}")
     else
         echo "  WARNING: No local checkpoint found to resume from. Starting fresh."
     fi
+elif [ -n "${BASE_CKPT_FILE}" ]; then
+    TRAIN_CMD+=(--resume_from_checkpoint "${BASE_CKPT_FILE}")
 fi
 
 echo "Running: ${TRAIN_CMD[*]}"

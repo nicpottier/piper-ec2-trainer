@@ -1,5 +1,6 @@
-SinhalaTTSData
+config.env
 prepared_data/
+model/
 *.ckpt
 *.onnx
 .instance_id
