@@ -70,25 +70,25 @@ All settings live in `config.env`:
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `PROJECT_NAME` | Short slug for AWS resource naming | `sinhala-tts` |
-| `LANG_NAME` | Human-readable language name | `Sinhala` |
-| `LANG_LOCALE` | Piper locale code (used in model filename) | `si_LK` |
-| `INPUT_DATA_DIR` | Local path to raw training data | `SinhalaTTSData` |
+| `PROJECT_NAME` | Short slug for AWS resource naming | `tamil-tts` |
+| `LANG_NAME` | Human-readable language name | `Tamil` |
+| `LANG_LOCALE` | Piper locale code (used in model filename) | `ta_IN` |
+| `INPUT_DATA_DIR` | Local path to raw training data | `TamilTTSData` |
 
 ### S3
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `S3_BUCKET` | S3 bucket for data and checkpoints | `sinhala-tts-piper` |
-| `S3_REGION` | S3 bucket region | `us-west-2` |
+| `S3_BUCKET` | S3 bucket for data and checkpoints | `tamil-tts-piper` |
+| `S3_REGION` | S3 bucket region | `us-east-1` |
 
 ### EC2
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `EC2_INSTANCE_TYPE` | GPU instance type | `g6.xlarge` |
-| `EC2_REGION` | EC2 region | `us-west-2` |
-| `EC2_KEY_NAME` | SSH key pair name | `sinhala-tts-key` |
+| `EC2_REGION` | EC2 region | `us-east-1` |
+| `EC2_KEY_NAME` | SSH key pair name | `my-tts-key` |
 | `EC2_SPOT_MAX_PRICE` | Max hourly spot price | `0.60` |
 | `EC2_USE_SPOT` | Use spot instances (`true`/`false`) | `true` |
 
@@ -96,7 +96,7 @@ All settings live in `config.env`:
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `PIPER_LANGUAGE` | Piper language code | `si` |
+| `PIPER_LANGUAGE` | Piper language code | `ta` |
 | `PIPER_QUALITY` | Model quality (`low`/`medium`/`high`) | `medium` |
 | `PIPER_BATCH_SIZE` | Training batch size | `32` |
 | `PIPER_MAX_EPOCHS` | Maximum training epochs | `6000` |
@@ -106,7 +106,7 @@ All settings live in `config.env`:
 
 ### Base Checkpoint
 
-Fine-tuning from a related language's checkpoint is much faster than training from scratch. Available checkpoints: `https://huggingface.co/datasets/rhasspy/piper-checkpoints`.
+Fine-tuning from a related language's checkpoint is much faster than training from scratch. Browse available checkpoints at `https://huggingface.co/datasets/rhasspy/piper-checkpoints`. Pick the closest available language by language family (e.g. Hindi for South Asian languages, German for European languages).
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
