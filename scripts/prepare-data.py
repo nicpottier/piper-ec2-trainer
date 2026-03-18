@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Prepare Sinhala TTS training data for Piper.
+Prepare TTS training data for Piper.
 
 Reads TextData.xlsx and wav files from the input directory, then:
   - Creates metadata.csv in pipe-delimited LJSpeech format: id|text
-  - Resamples all wav files from 44.1kHz to 22050Hz using sox
+  - Resamples all wav files to the target sample rate using sox
   - Validates that every wav referenced in the spreadsheet exists
   - Outputs to prepared_data/wav/ and prepared_data/metadata.csv
 """
@@ -23,12 +23,13 @@ except ImportError:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Prepare Sinhala TTS data for Piper training")
+    parser = argparse.ArgumentParser(description="Prepare TTS data for Piper training")
+    default_input = os.environ.get("INPUT_DATA_DIR", "data")
     parser.add_argument(
         "--input-dir",
         type=str,
-        default="SinhalaTTSData",
-        help="Path to input directory containing TextData.xlsx and wavs/ (default: SinhalaTTSData)",
+        default=default_input,
+        help=f"Path to input directory containing TextData.xlsx and wavs/ (default: {default_input})",
     )
     parser.add_argument(
         "--output-dir",
@@ -61,7 +62,6 @@ def read_xlsx(xlsx_path: Path) -> list[tuple[str, str]]:
 
         # Determine which column has the filename and which has the text.
         # The filename column contains values like "a000001" or "a000001.wav".
-        # The text column contains Sinhala script.
         filename_val = str(col_a).strip()
         text_val = str(col_b).strip()
 

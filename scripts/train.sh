@@ -17,10 +17,11 @@ if ! flock -n 9; then
     exit 1
 fi
 
-echo "=== Sinhala TTS Training ==="
+echo "=== ${LANG_NAME} TTS Training ==="
 echo ""
 
-CKPT_DOWNLOAD_DIR="${EC2_CHECKPOINT_DIR}/hindi-base"
+BASE_CKPT_SLUG=$(echo "${BASE_CHECKPOINT_NAME}" | tr '[:upper:]' '[:lower:]')
+CKPT_DOWNLOAD_DIR="${EC2_CHECKPOINT_DIR}/${BASE_CKPT_SLUG}-base"
 TRAINING_DIR="${EC2_OUTPUT_DIR}/training"
 
 # --- Step 1: Preprocess ---

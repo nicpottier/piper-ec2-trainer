@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../config.env"
 
-echo "=== S3 Setup for Sinhala TTS Training ==="
+echo "=== S3 Setup for ${LANG_NAME} TTS Training ==="
 echo ""
 
 # Create bucket

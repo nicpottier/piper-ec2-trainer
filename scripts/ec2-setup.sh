@@ -96,8 +96,9 @@ else
 fi
 
 echo ""
-echo "[5/6] Downloading Hindi base checkpoint from HuggingFace ..."
-CKPT_DOWNLOAD_DIR="${EC2_CHECKPOINT_DIR}/hindi-base"
+BASE_CKPT_SLUG=$(echo "${BASE_CHECKPOINT_NAME}" | tr '[:upper:]' '[:lower:]')
+echo "[5/6] Downloading ${BASE_CHECKPOINT_NAME} base checkpoint from HuggingFace ..."
+CKPT_DOWNLOAD_DIR="${EC2_CHECKPOINT_DIR}/${BASE_CKPT_SLUG}-base"
 mkdir -p "${CKPT_DOWNLOAD_DIR}"
 
 # Clone just the needed subdirectory using git sparse checkout
@@ -120,7 +121,7 @@ fi
 CKPT_SRC="${EC2_CHECKPOINT_DIR}/piper-checkpoints/${BASE_CHECKPOINT_PATH}"
 if [ -d "${CKPT_SRC}" ]; then
     cp -r "${CKPT_SRC}"/* "${CKPT_DOWNLOAD_DIR}/"
-    echo "  Hindi checkpoint files:"
+    echo "  ${BASE_CHECKPOINT_NAME} checkpoint files:"
     ls -lh "${CKPT_DOWNLOAD_DIR}/"
 else
     echo "  WARNING: Expected checkpoint path not found: ${CKPT_SRC}"
@@ -135,7 +136,7 @@ echo "Summary:"
 echo "  Work dir:        ${EC2_WORK_DIR}"
 echo "  Training data:   ${EC2_DATA_DIR} (${WAV_COUNT} wav files)"
 echo "  Output dir:      ${EC2_OUTPUT_DIR}"
-echo "  Hindi checkpoint: ${CKPT_DOWNLOAD_DIR}"
+echo "  Base checkpoint:  ${CKPT_DOWNLOAD_DIR}"
 echo ""
 echo "[6/6] Installing boot-time auto-resume service ..."
 "${SCRIPT_DIR}/ec2-install-autoresume.sh"

@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/.."
 source "$SCRIPT_DIR/../config.env"
 
-echo "=== Launching EC2 Spot Instance for Sinhala TTS Training ==="
+echo "=== Launching EC2 Spot Instance for ${LANG_NAME} TTS Training ==="
 echo ""
 
 # Find the latest Deep Learning AMI (GPU, Ubuntu)
@@ -52,7 +52,7 @@ if ! aws ec2 describe-key-pairs --key-names "${EC2_KEY_NAME}" --region "${EC2_RE
 fi
 
 # Create security group if needed
-SG_NAME="sinhala-tts-training-sg"
+SG_NAME="${PROJECT_NAME}-training-sg"
 SG_ID=$(aws ec2 describe-security-groups \
     --region "${EC2_REGION}" \
     --filters "Name=group-name,Values=${SG_NAME}" \
@@ -63,7 +63,7 @@ if [ "$SG_ID" = "None" ] || [ -z "$SG_ID" ]; then
     echo "Creating security group: ${SG_NAME} ..."
     SG_ID=$(aws ec2 create-security-group \
         --group-name "${SG_NAME}" \
-        --description "Security group for Sinhala TTS training" \
+        --description "Security group for ${LANG_NAME} TTS training" \
         --region "${EC2_REGION}" \
         --output text --query 'GroupId')
 
@@ -133,7 +133,7 @@ for SUBNET in ${SUBNETS}; do
                 "DeleteOnTermination": true
             }
         }]' \
-        --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=sinhala-tts-training}]' \
+        --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${PROJECT_NAME}-training}]" \
         --query 'Instances[0].InstanceId' \
         --output text 2>/dev/null) && break || INSTANCE_ID=""
 

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../config.env"
 
-SERVICE_NAME="sinhala-tts-resume.service"
+SERVICE_NAME="${PROJECT_NAME}-resume.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
 SERVICE_USER="${SUDO_USER:-$USER}"
 SERVICE_HOME="$(eval echo "~${SERVICE_USER}")"
@@ -18,7 +18,7 @@ echo ""
 
 sudo tee "${SERVICE_PATH}" >/dev/null <<EOF
 [Unit]
-Description=Sinhala TTS auto-resume training
+Description=${LANG_NAME} TTS auto-resume training
 Wants=network-online.target
 After=network-online.target
 
