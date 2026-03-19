@@ -4,6 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/.."
 source "$SCRIPT_DIR/../config.env"
+export ONNX_NAME LANG_NAME LANG_LOCALE PIPER_LANGUAGE PIPER_QUALITY PIPER_SAMPLE_RATE
+export BASE_CHECKPOINT_NAME BASE_CHECKPOINT_LANG BASE_CHECKPOINT_PATH
+export S3_BUCKET S3_CHECKPOINT_PREFIX
+export SCRIPT_DIR PROJECT_DIR
 
 # Use the project's Python if available
 PYTHON="${PROJECT_DIR}/env/bin/python"
@@ -57,7 +61,10 @@ if ! "${PYTHON}" -c "import huggingface_hub" 2>/dev/null; then
 fi
 
 # --- Step 3-8: Run the publish logic in Python ---
-exec "${PYTHON}" - <<'PYEOF'
+# Write to temp file so stdin stays connected to the terminal for interactive prompts
+PUBLISH_PY=$(mktemp /tmp/publish-hf-XXXXXX.py)
+trap "rm -f ${PUBLISH_PY}" EXIT
+cat > "${PUBLISH_PY}" <<'PYEOF'
 import os
 import sys
 import shutil
@@ -229,3 +236,4 @@ Trained using the [Piper TTS Training Pipeline](https://github.com/nicpottier/pi
 finally:
     shutil.rmtree(upload_dir, ignore_errors=True)
 PYEOF
+exec "${PYTHON}" "${PUBLISH_PY}"
