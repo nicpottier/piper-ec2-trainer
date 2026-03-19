@@ -61,6 +61,7 @@ ssh -i ~/.ssh/<KEY_NAME>.pem ubuntu@<IP>
 | `scripts/check-progress.sh` | Monitor training progress remotely |
 | `scripts/ec2-stop.sh` | Terminate instance and clean up |
 | `scripts/sync-checkpoints.sh` | Push/pull checkpoints to/from S3 |
+| `scripts/publish-hf.sh` | Publish model to Hugging Face |
 
 ## Configuration
 
@@ -158,6 +159,16 @@ These are uploaded to S3 and can be used with the `piper` CLI or NVDA's Piper vo
 pip install piper-tts
 echo 'text in your language' | piper --model <LANG_LOCALE>-<QUALITY>.onnx --output_file test.wav
 ```
+
+## Publishing to Hugging Face
+
+To publish the exported model (with samples and a model card):
+
+```bash
+./scripts/publish-hf.sh
+```
+
+The script walks you through login, repo creation, and upload. It generates a model card with audio widget samples from any `test_*.wav` files in `model/`.
 
 ## Cost Estimates
 
