@@ -74,6 +74,7 @@ All settings live in `config.env`:
 | `PROJECT_NAME` | Short slug for AWS resource naming | `tamil-tts` |
 | `LANG_NAME` | Human-readable language name | `Tamil` |
 | `LANG_LOCALE` | Piper locale code (used in model filename) | `ta_IN` |
+| `VOICE_NAME` | Voice/speaker identifier (lowercase, used in filename) | `ashoka` |
 | `INPUT_DATA_DIR` | Local path to raw training data | `TamilTTSData` |
 
 ### S3
@@ -150,14 +151,14 @@ On instances set up with `ec2-setup.sh`, a boot-time systemd service automatical
 ## Exported Model
 
 After `scripts/export.sh`, the model is two files:
-- `<LANG_LOCALE>-<QUALITY>.onnx` -- the ONNX model
-- `<LANG_LOCALE>-<QUALITY>.onnx.json` -- the config
+- `<LANG_LOCALE>-<VOICE_NAME>-<QUALITY>.onnx` -- the ONNX model
+- `<LANG_LOCALE>-<VOICE_NAME>-<QUALITY>.onnx.json` -- the config
 
 These are uploaded to S3 and can be used with the `piper` CLI or NVDA's Piper voice addon:
 
 ```bash
 pip install piper-tts
-echo 'text in your language' | piper --model <LANG_LOCALE>-<QUALITY>.onnx --output_file test.wav
+echo 'text in your language' | piper --model <LANG_LOCALE>-<VOICE_NAME>-<QUALITY>.onnx --output_file test.wav
 ```
 
 ## Publishing to Hugging Face

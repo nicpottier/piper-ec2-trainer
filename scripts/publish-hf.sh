@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/.."
 source "$SCRIPT_DIR/../config.env"
-export ONNX_NAME LANG_NAME LANG_LOCALE PIPER_LANGUAGE PIPER_QUALITY PIPER_SAMPLE_RATE
+export ONNX_NAME VOICE_NAME LANG_NAME LANG_LOCALE PIPER_LANGUAGE PIPER_QUALITY PIPER_SAMPLE_RATE
 export BASE_CHECKPOINT_NAME BASE_CHECKPOINT_LANG BASE_CHECKPOINT_PATH
 export S3_BUCKET S3_CHECKPOINT_PREFIX
 export SCRIPT_DIR PROJECT_DIR
@@ -115,7 +115,8 @@ print(f"Logged in as: {hf_user}")
 print()
 
 # --- Choose repo name ---
-default_repo = f"{hf_user}/piper-{LANG_LOCALE}-{PIPER_QUALITY}"
+VOICE_NAME = os.environ.get("VOICE_NAME", "")
+default_repo = f"{hf_user}/piper-{LANG_LOCALE}-{VOICE_NAME}-{PIPER_QUALITY}"
 repo_input = input(f"Hugging Face repo [{default_repo}]: ").strip()
 hf_repo = repo_input if repo_input else default_repo
 print()
