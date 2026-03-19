@@ -62,8 +62,10 @@ fi
 
 # --- Step 3-8: Run the publish logic in Python ---
 # Write to temp file so stdin stays connected to the terminal for interactive prompts
-PUBLISH_PY=$(mktemp /tmp/publish-hf-XXXXXX.py)
-trap "rm -f ${PUBLISH_PY}" EXIT
+PUBLISH_PY=$(mktemp /tmp/publish-hf-XXXXXX)
+mv "${PUBLISH_PY}" "${PUBLISH_PY}.py"
+PUBLISH_PY="${PUBLISH_PY}.py"
+trap "rm -f '${PUBLISH_PY}'" EXIT
 cat > "${PUBLISH_PY}" <<'PYEOF'
 import os
 import sys
