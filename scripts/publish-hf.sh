@@ -142,11 +142,15 @@ try:
             shutil.copy2(wav, samples_dir / wav.name)
 
     # --- Generate model card ---
-    widget_entries = ""
-    for wav in sample_wavs:
-        stem = wav.stem.removeprefix("test_")
-        title = stem.replace("_", " ").title()
-        widget_entries += f'\n  - src: samples/{wav.name}\n    example_title: "{title}"'
+    # Build audio samples section for the markdown body
+    audio_samples = ""
+    if sample_wavs:
+        audio_samples = "\n## Samples\n\n"
+        for wav in sample_wavs:
+            stem = wav.stem.removeprefix("test_")
+            title = stem.replace("_", " ").title()
+            audio_samples += f'**{title}**\n\n'
+            audio_samples += f'<audio controls><source src="https://huggingface.co/{hf_repo}/resolve/main/samples/{wav.name}" type="audio/wav"></audio>\n\n'
 
     model_card = f"""---
 language:
@@ -161,13 +165,12 @@ tags:
 base_model:
   - rhasspy/piper-voices
 library_name: onnx
-widget:{widget_entries}
 ---
 
 # Piper TTS -- {LANG_NAME} ({LANG_LOCALE}) {PIPER_QUALITY}
 
 A [Piper](https://github.com/rhasspy/piper) text-to-speech voice for {LANG_NAME}, exported as ONNX.
-
+{audio_samples}
 ## Model Details
 
 | | |
