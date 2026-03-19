@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/../config.env"
 export ONNX_NAME VOICE_NAME LANG_NAME LANG_LOCALE PIPER_LANGUAGE PIPER_QUALITY PIPER_SAMPLE_RATE
 export BASE_CHECKPOINT_NAME BASE_CHECKPOINT_LANG BASE_CHECKPOINT_PATH
 export S3_BUCKET S3_CHECKPOINT_PREFIX
-export SCRIPT_DIR PROJECT_DIR
+export SCRIPT_DIR PROJECT_DIR SAMPLES
 
 # Use the project's Python if available
 PYTHON="${PROJECT_DIR}/env/bin/python"
@@ -41,16 +41,6 @@ fi
 echo "Model files found:"
 echo "  ${ONNX_FILE} ($(du -h "${ONNX_FILE}" | cut -f1 | xargs))"
 echo "  ${CONFIG_FILE}"
-
-# Collect sample wav files
-SAMPLE_WAVS=""
-for wav in "${MODEL_DIR}"/test_*.wav; do
-    [ -f "$wav" ] && SAMPLE_WAVS="${SAMPLE_WAVS}${wav}|"
-done
-if [ -n "${SAMPLE_WAVS}" ]; then
-    COUNT=$(echo "${SAMPLE_WAVS}" | tr '|' '\n' | grep -c .)
-    echo "  ${COUNT} sample wav file(s)"
-fi
 echo ""
 
 # --- Step 2: Check huggingface_hub is installed ---
@@ -68,7 +58,7 @@ PUBLISH_PY="${PUBLISH_PY}.py"
 trap "rm -f '${PUBLISH_PY}'" EXIT
 cat > "${PUBLISH_PY}" <<'PYEOF'
 import os
-import sys
+import subprocess
 import shutil
 import tempfile
 from pathlib import Path
@@ -86,15 +76,18 @@ BASE_CHECKPOINT_NAME = os.environ.get("BASE_CHECKPOINT_NAME", "")
 BASE_CHECKPOINT_LANG = os.environ.get("BASE_CHECKPOINT_LANG", "")
 BASE_CHECKPOINT_PATH = os.environ.get("BASE_CHECKPOINT_PATH", "")
 
-SCRIPT_DIR = Path(__file__).resolve().parent if "__file__" in dir() else Path(os.environ.get("SCRIPT_DIR", "."))
-PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", SCRIPT_DIR / "..")).resolve()
+PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
 MODEL_DIR = PROJECT_DIR / "model"
 
 ONNX_FILE = MODEL_DIR / f"{ONNX_NAME}.onnx"
 CONFIG_FILE = MODEL_DIR / f"{ONNX_NAME}.onnx.json"
 
-# Collect sample wavs
-sample_wavs = sorted(MODEL_DIR.glob("test_*.wav"))
+# Parse sample texts from SAMPLES env var (one text per line, blank lines ignored)
+sample_texts = [
+    line.strip()
+    for line in os.environ.get("SAMPLES", "").splitlines()
+    if line.strip()
+]
 
 # --- Check authentication ---
 api = HfApi()
@@ -134,23 +127,35 @@ try:
     shutil.copy2(ONNX_FILE, upload_dir / ONNX_FILE.name)
     shutil.copy2(CONFIG_FILE, upload_dir / CONFIG_FILE.name)
 
-    # Copy sample wavs
-    if sample_wavs:
+    # Generate sample wavs from text using piper
+    sample_wavs = []
+    if sample_texts:
         samples_dir = upload_dir / "samples"
         samples_dir.mkdir()
-        for wav in sample_wavs:
-            shutil.copy2(wav, samples_dir / wav.name)
+        print(f"Generating {len(sample_texts)} sample audio files ...")
+        for i, text in enumerate(sample_texts):
+            wav_name = f"sample_{i + 1:02d}.wav"
+            wav_path = samples_dir / wav_name
+            result = subprocess.run(
+                ["piper", "--model", str(ONNX_FILE), "--output_file", str(wav_path)],
+                input=text.encode(),
+                capture_output=True,
+            )
+            if result.returncode == 0 and wav_path.exists():
+                sample_wavs.append((wav_name, text))
+                print(f"  {wav_name}: {text}")
+            else:
+                print(f"  WARNING: Failed to generate {wav_name}: {result.stderr.decode()}")
+        print()
 
     # --- Generate model card ---
-    # Build audio samples section for the markdown body
+    example_text = sample_texts[0] if sample_texts else "your text here"
     audio_samples = ""
     if sample_wavs:
         audio_samples = "\n## Samples\n\n"
-        for wav in sample_wavs:
-            stem = wav.stem.removeprefix("test_")
-            title = stem.replace("_", " ").title()
-            audio_samples += f'**{title}**\n\n'
-            audio_samples += f'<audio controls><source src="https://huggingface.co/{hf_repo}/resolve/main/samples/{wav.name}" type="audio/wav"></audio>\n\n'
+        for wav_name, text in sample_wavs:
+            audio_samples += f"**{text}**\n\n"
+            audio_samples += f'<audio controls><source src="https://huggingface.co/{hf_repo}/resolve/main/samples/{wav_name}" type="audio/wav"></audio>\n\n'
 
     model_card = f"""---
 language:
@@ -187,7 +192,7 @@ A [Piper](https://github.com/rhasspy/piper) text-to-speech voice for {LANG_NAME}
 
 ```bash
 pip install piper-tts
-echo 'your text here' | piper --model {ONNX_NAME}.onnx --output_file output.wav
+echo '{example_text}' | piper --model {ONNX_NAME}.onnx --output_file output.wav
 ```
 
 ### With NVDA
@@ -200,7 +205,7 @@ Download both files and place them in NVDA's Piper voices directory:
 
 ```python
 import subprocess
-text = "your text here"
+text = "{example_text}"
 subprocess.run(
     ["piper", "--model", "{ONNX_NAME}.onnx", "--output_file", "output.wav"],
     input=text.encode(),
@@ -217,7 +222,7 @@ subprocess.run(
 
 ## Training
 
-Trained using the [Piper TTS Training Pipeline](https://github.com/nicpottier/piper-tts-training). Fine-tuned from the {BASE_CHECKPOINT_NAME} (`{BASE_CHECKPOINT_PATH}`) checkpoint.
+Trained using the [Piper EC2 Training Pipeline](https://github.com/nicpottier/piper-ec2-trainer). Fine-tuned from the {BASE_CHECKPOINT_NAME} (`{BASE_CHECKPOINT_PATH}`) checkpoint.
 """
 
     (upload_dir / "README.md").write_text(model_card)

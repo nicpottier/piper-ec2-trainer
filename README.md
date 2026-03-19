@@ -8,7 +8,6 @@ Train a [Piper TTS](https://github.com/rhasspy/piper) text-to-speech model for a
 
 - **Python 3.10+** with pip
 - **sox** -- audio processing (`brew install sox` on macOS, `apt install sox` on Linux)
-- **openpyxl** -- Excel reading (`pip install openpyxl`)
 - **AWS CLI** -- configured with credentials that have EC2 and S3 permissions
 - **Training data** -- directory containing `TextData.xlsx` and `wavs/`
 
@@ -19,8 +18,14 @@ Train a [Piper TTS](https://github.com/rhasspy/piper) text-to-speech model for a
    cp config.example.env config.env
    ```
    See `config.example.env` for detailed comments on each setting, or [Configuration](#configuration) below.
-2. Symlink or place your training data directory (set `INPUT_DATA_DIR` in config)
-3. Run the pipeline:
+2. Install Python dependencies:
+   ```bash
+   python3 -m venv env
+   source env/bin/activate
+   pip install -r requirements.txt
+   ```
+3. Symlink or place your training data directory (set `INPUT_DATA_DIR` in config)
+4. Run the pipeline:
 
 ```bash
 # 1. Prepare training data (resample + create metadata)
@@ -169,7 +174,7 @@ To publish the exported model (with samples and a model card):
 ./scripts/publish-hf.sh
 ```
 
-The script walks you through login, repo creation, and upload. It generates a model card with audio widget samples from any `test_*.wav` files in `model/`.
+The script walks you through login, repo creation, and upload. It generates sample audio from the `SAMPLES` texts in `config.env` and creates a model card with playable audio.
 
 ## Cost Estimates
 
