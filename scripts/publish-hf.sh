@@ -5,6 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR/.."
 source "$SCRIPT_DIR/../config.env"
 
+# Use the project's Python if available
+PYTHON="${PROJECT_DIR}/env/bin/python"
+if [ ! -x "${PYTHON}" ]; then
+    PYTHON="python3"
+fi
+
 echo "=== Publish Piper TTS Model to Hugging Face ==="
 echo ""
 
@@ -33,153 +39,193 @@ echo "  ${ONNX_FILE} ($(du -h "${ONNX_FILE}" | cut -f1 | xargs))"
 echo "  ${CONFIG_FILE}"
 
 # Collect sample wav files
-SAMPLE_WAVS=()
+SAMPLE_WAVS=""
 for wav in "${MODEL_DIR}"/test_*.wav; do
-    [ -f "$wav" ] && SAMPLE_WAVS+=("$wav")
+    [ -f "$wav" ] && SAMPLE_WAVS="${SAMPLE_WAVS}${wav}|"
 done
-if [ ${#SAMPLE_WAVS[@]} -gt 0 ]; then
-    echo "  ${#SAMPLE_WAVS[@]} sample wav file(s)"
+if [ -n "${SAMPLE_WAVS}" ]; then
+    COUNT=$(echo "${SAMPLE_WAVS}" | tr '|' '\n' | grep -c .)
+    echo "  ${COUNT} sample wav file(s)"
 fi
 echo ""
 
-# --- Step 2: Check huggingface-cli ---
-if ! command -v huggingface-cli &>/dev/null; then
-    echo "huggingface-cli not found. Installing huggingface_hub ..."
-    pip install -q huggingface_hub
+# --- Step 2: Check huggingface_hub is installed ---
+if ! "${PYTHON}" -c "import huggingface_hub" 2>/dev/null; then
+    echo "Installing huggingface_hub ..."
+    "${PYTHON}" -m pip install -q huggingface_hub
     echo ""
 fi
 
-# --- Step 3: Check authentication ---
-if ! huggingface-cli whoami &>/dev/null; then
-    echo "Not logged in to Hugging Face."
-    echo "You need an access token from: https://huggingface.co/settings/tokens"
-    echo ""
-    huggingface-cli login
-    echo ""
-fi
+# --- Step 3-8: Run the publish logic in Python ---
+exec "${PYTHON}" - <<'PYEOF'
+import os
+import sys
+import shutil
+import tempfile
+from pathlib import Path
 
-HF_USER=$(huggingface-cli whoami 2>/dev/null | head -1)
-echo "Logged in as: ${HF_USER}"
-echo ""
+from huggingface_hub import HfApi, login
 
-# --- Step 4: Choose repo name ---
-DEFAULT_REPO="${HF_USER}/piper-${LANG_LOCALE}-${PIPER_QUALITY}"
-read -rp "Hugging Face repo [${DEFAULT_REPO}]: " HF_REPO
-HF_REPO="${HF_REPO:-$DEFAULT_REPO}"
-echo ""
+# Read config from environment (sourced by the shell wrapper)
+ONNX_NAME = os.environ.get("ONNX_NAME", "")
+LANG_NAME = os.environ.get("LANG_NAME", "")
+LANG_LOCALE = os.environ.get("LANG_LOCALE", "")
+PIPER_LANGUAGE = os.environ.get("PIPER_LANGUAGE", "")
+PIPER_QUALITY = os.environ.get("PIPER_QUALITY", "")
+PIPER_SAMPLE_RATE = os.environ.get("PIPER_SAMPLE_RATE", "22050")
+BASE_CHECKPOINT_NAME = os.environ.get("BASE_CHECKPOINT_NAME", "")
+BASE_CHECKPOINT_LANG = os.environ.get("BASE_CHECKPOINT_LANG", "")
+BASE_CHECKPOINT_PATH = os.environ.get("BASE_CHECKPOINT_PATH", "")
 
-# --- Step 5: Create repo ---
-echo "Creating repo: ${HF_REPO} ..."
-huggingface-cli repo create "${HF_REPO#*/}" --type model -y 2>/dev/null || true
-echo ""
+SCRIPT_DIR = Path(__file__).resolve().parent if "__file__" in dir() else Path(os.environ.get("SCRIPT_DIR", "."))
+PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", SCRIPT_DIR / "..")).resolve()
+MODEL_DIR = PROJECT_DIR / "model"
 
-# --- Step 6: Prepare upload directory ---
-UPLOAD_DIR=$(mktemp -d)
-trap "rm -rf ${UPLOAD_DIR}" EXIT
+ONNX_FILE = MODEL_DIR / f"{ONNX_NAME}.onnx"
+CONFIG_FILE = MODEL_DIR / f"{ONNX_NAME}.onnx.json"
 
-cp "${ONNX_FILE}" "${UPLOAD_DIR}/"
-cp "${CONFIG_FILE}" "${UPLOAD_DIR}/"
+# Collect sample wavs
+sample_wavs = sorted(MODEL_DIR.glob("test_*.wav"))
 
-# Copy sample wavs
-for wav in "${SAMPLE_WAVS[@]}"; do
-    cp "$wav" "${UPLOAD_DIR}/samples/$(basename "$wav")" 2>/dev/null || {
-        mkdir -p "${UPLOAD_DIR}/samples"
-        cp "$wav" "${UPLOAD_DIR}/samples/$(basename "$wav")"
-    }
-done
+# --- Check authentication ---
+api = HfApi()
+try:
+    user_info = api.whoami()
+    hf_user = user_info["name"]
+except Exception:
+    print("Not logged in to Hugging Face.")
+    print("You need an access token from: https://huggingface.co/settings/tokens")
+    print()
+    token = input("Paste your HF token (or press Enter to open browser login): ").strip()
+    if token:
+        login(token=token)
+    else:
+        login()
+    user_info = api.whoami()
+    hf_user = user_info["name"]
 
-# --- Step 7: Generate model card ---
-# Build sample widget entries
-WIDGET_YAML=""
-for wav in "${SAMPLE_WAVS[@]}"; do
-    BASENAME=$(basename "$wav" .wav)
-    # Convert test_nice_day -> "Nice day"
-    TITLE=$(echo "${BASENAME#test_}" | tr '_' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
-    WIDGET_YAML="${WIDGET_YAML}
-  - src: samples/$(basename "$wav")
-    example_title: \"${TITLE}\""
-done
+print(f"Logged in as: {hf_user}")
+print()
 
-cat > "${UPLOAD_DIR}/README.md" <<MODELCARD
----
+# --- Choose repo name ---
+default_repo = f"{hf_user}/piper-{LANG_LOCALE}-{PIPER_QUALITY}"
+repo_input = input(f"Hugging Face repo [{default_repo}]: ").strip()
+hf_repo = repo_input if repo_input else default_repo
+print()
+
+# --- Create repo ---
+print(f"Creating repo: {hf_repo} ...")
+api.create_repo(hf_repo, repo_type="model", exist_ok=True)
+print()
+
+# --- Prepare upload directory ---
+upload_dir = Path(tempfile.mkdtemp())
+try:
+    shutil.copy2(ONNX_FILE, upload_dir / ONNX_FILE.name)
+    shutil.copy2(CONFIG_FILE, upload_dir / CONFIG_FILE.name)
+
+    # Copy sample wavs
+    if sample_wavs:
+        samples_dir = upload_dir / "samples"
+        samples_dir.mkdir()
+        for wav in sample_wavs:
+            shutil.copy2(wav, samples_dir / wav.name)
+
+    # --- Generate model card ---
+    widget_entries = ""
+    for wav in sample_wavs:
+        stem = wav.stem.removeprefix("test_")
+        title = stem.replace("_", " ").title()
+        widget_entries += f'\n  - src: samples/{wav.name}\n    example_title: "{title}"'
+
+    model_card = f"""---
 language:
-  - ${PIPER_LANGUAGE}
+  - {PIPER_LANGUAGE}
 license: mit
 pipeline_tag: text-to-speech
 tags:
   - piper
   - tts
   - onnx
-  - ${LANG_NAME,,}
+  - {LANG_NAME.lower()}
 base_model:
   - rhasspy/piper-voices
 library_name: onnx
-widget:${WIDGET_YAML}
+widget:{widget_entries}
 ---
 
-# Piper TTS -- ${LANG_NAME} (${LANG_LOCALE}) ${PIPER_QUALITY}
+# Piper TTS -- {LANG_NAME} ({LANG_LOCALE}) {PIPER_QUALITY}
 
-A [Piper](https://github.com/rhasspy/piper) text-to-speech voice for ${LANG_NAME}, exported as ONNX.
+A [Piper](https://github.com/rhasspy/piper) text-to-speech voice for {LANG_NAME}, exported as ONNX.
 
 ## Model Details
 
 | | |
 |---|---|
-| **Language** | ${LANG_NAME} (${LANG_LOCALE}) |
-| **Quality** | ${PIPER_QUALITY} |
-| **Base model** | Fine-tuned from ${BASE_CHECKPOINT_NAME} (\`${BASE_CHECKPOINT_LANG}\`) via [rhasspy/piper-checkpoints](https://huggingface.co/datasets/rhasspy/piper-checkpoints) |
-| **Sample rate** | ${PIPER_SAMPLE_RATE} Hz |
+| **Language** | {LANG_NAME} ({LANG_LOCALE}) |
+| **Quality** | {PIPER_QUALITY} |
+| **Base model** | Fine-tuned from {BASE_CHECKPOINT_NAME} (`{BASE_CHECKPOINT_LANG}`) via [rhasspy/piper-checkpoints](https://huggingface.co/datasets/rhasspy/piper-checkpoints) |
+| **Sample rate** | {PIPER_SAMPLE_RATE} Hz |
 | **Format** | ONNX |
 
 ## Usage
 
 ### With Piper CLI
 
-\`\`\`bash
+```bash
 pip install piper-tts
-echo 'your text here' | piper --model ${ONNX_NAME}.onnx --output_file output.wav
-\`\`\`
+echo 'your text here' | piper --model {ONNX_NAME}.onnx --output_file output.wav
+```
 
 ### With NVDA
 
 Download both files and place them in NVDA's Piper voices directory:
-- \`${ONNX_NAME}.onnx\`
-- \`${ONNX_NAME}.onnx.json\`
+- `{ONNX_NAME}.onnx`
+- `{ONNX_NAME}.onnx.json`
 
 ### Programmatic (Python)
 
-\`\`\`python
+```python
 import subprocess
 text = "your text here"
 subprocess.run(
-    ["piper", "--model", "${ONNX_NAME}.onnx", "--output_file", "output.wav"],
+    ["piper", "--model", "{ONNX_NAME}.onnx", "--output_file", "output.wav"],
     input=text.encode(),
 )
-\`\`\`
+```
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| \`${ONNX_NAME}.onnx\` | ONNX model |
-| \`${ONNX_NAME}.onnx.json\` | Piper config (phoneme map, sample rate, etc.) |
-| \`samples/\` | Audio samples generated by this model |
+| `{ONNX_NAME}.onnx` | ONNX model |
+| `{ONNX_NAME}.onnx.json` | Piper config (phoneme map, sample rate, etc.) |
+| `samples/` | Audio samples generated by this model |
 
 ## Training
 
-Trained using the [Piper TTS Training Pipeline](https://github.com/nicpottier/piper-tts-training). Fine-tuned from the ${BASE_CHECKPOINT_NAME} (\`${BASE_CHECKPOINT_PATH}\`) checkpoint.
-MODELCARD
+Trained using the [Piper TTS Training Pipeline](https://github.com/nicpottier/piper-tts-training). Fine-tuned from the {BASE_CHECKPOINT_NAME} (`{BASE_CHECKPOINT_PATH}`) checkpoint.
+"""
 
-echo "Generated model card."
+    (upload_dir / "README.md").write_text(model_card)
+    print("Generated model card.")
 
-# --- Step 8: Upload ---
-echo ""
-echo "Uploading to ${HF_REPO} ..."
-echo ""
-huggingface-cli upload "${HF_REPO}" "${UPLOAD_DIR}" . --commit-message "Upload ${LANG_NAME} Piper TTS model (${PIPER_QUALITY})"
+    # --- Upload ---
+    print()
+    print(f"Uploading to {hf_repo} ...")
+    print()
+    api.upload_folder(
+        folder_path=str(upload_dir),
+        repo_id=hf_repo,
+        commit_message=f"Upload {LANG_NAME} Piper TTS model ({PIPER_QUALITY})",
+    )
 
-echo ""
-echo "=== Published ==="
-echo ""
-echo "  https://huggingface.co/${HF_REPO}"
-echo ""
+    print()
+    print("=== Published ===")
+    print()
+    print(f"  https://huggingface.co/{hf_repo}")
+    print()
+
+finally:
+    shutil.rmtree(upload_dir, ignore_errors=True)
+PYEOF
